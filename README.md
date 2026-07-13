@@ -1,5 +1,5 @@
 # YouTube-Transcriptor
-Paste a YouTube video URL and download transcript of it
+Paste a YouTube video URL and download transcript of the given video
 
 ## Strp-by-Step development guide
 
@@ -87,3 +87,28 @@ To handle with different kind of YouTube URLs I have made `extract_video_id()` f
 - URL with params: https://www.youtube.com/watch?v={Video_ID}&t=90s
 - HTTP & alternate domains
 
+---
+
+### Extract Video Metadata:
+
+> Extracted Title and Description of the given video
+
+**Install `yt-dlp`**
+
+```Bash
+pip install yt-dlp
+```
+
+Used `yt-dlp`, because it is a free choice for grabbing metadata like titles and descriptions without dealing with official YouTube API quotas or keys.
+
+To run both tasks in parallel—fetching the transcript and extracting video metadata—I have utilized Python's built-in `asyncio.to_thread`. Since both operations are network-bound (I/O) blocking calls, running them concurrently will drastically speed up your API's response time.
+
+### Added `requirements.txt`
+
+As we are moving forword its required to maintain all the dependencies in a single source. So I have added `requirements.txt` file to smoothly install all the requirements using a single command
+
+**To install the dependencies simple run this command:**
+
+```bash
+pip install -r requirements.txt
+```

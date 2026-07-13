@@ -4,6 +4,7 @@ import './App.css';
 function App() {
   const [url, setUrl] = useState('');
   const [transcript, setTranscript] = useState([]);
+  const [videoInfo, setVideoInfo] = useState({ title: '', description: '' });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -25,12 +26,10 @@ function App() {
       });
 
       const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.detail || 'Something went wrong');
-      }
+      if (!response.ok) throw new Error(data.detail || 'Something went wrong');
 
       setTranscript(data.transcript);
+      setVideoInfo({ title: data.title, description: data.description }); // Store metadata
     } catch (err) {
       setError(err.message);
     } finally {
@@ -62,15 +61,25 @@ function App() {
         {error && <div className="error-message">⚠️ {error}</div>}
 
         {transcript.length > 0 && (
-          <div className="transcript-box">
-            <h2>Transcript Results</h2>
-            <div className="transcript-list">
-              {transcript.map((item, index) => (
-                <div key={index} className="transcript-item">
-                  <span className="timestamp">[{item.timestamp}]</span>
-                  <span className="text">{item.text}</span>
-                </div>
-              ))}
+          <div className="results-wrapper">
+            <div className="meta-card">
+              <h2 className="video-title">🎬 {videoInfo.title}</h2>
+              <details className="video-description">
+                <summary>View Video Description</summary>
+                <p>{videoInfo.description}</p>
+              </details>
+            </div>
+
+            <div className="transcript-box">
+              <h2>Transcript Results</h2>
+              <div className="transcript-list">
+                {transcript.map((item, index) => (
+                  <div key={index} className="transcript-item">
+                    <span className="timestamp">[{item.timestamp}]</span>
+                    <span className="text">{item.text}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         )}

@@ -10,8 +10,8 @@ from youtube_transcript_api import (
 )
 import re
 import traceback
-
-from youtube_transcript_api._errors import NoTranscriptFound
+import asyncio
+import yt_dlp
 
 app = FastAPI()
 
@@ -31,11 +31,11 @@ def extract_video_id(url: str) -> str:
     Extracts the 11-character YouTube video ID from any standard, 
     shortened, embedded, or Shorts URL format.
     Acceptable URL formats includes:
-    - Standard: https://www.youtube.com/watch?v=dQw4w9WgXcQ
-    - Shortened: https://youtu.be/dQw4w9WgXcQ
-    - Embedded: https://www.youtube.com/embed/dQw4w9WgXcQ
-    - Shorts: https://www.youtube.com/shorts/dQw4w9WgXcQ
-    - URL with params: https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=90s
+    - Standard: https://www.youtube.com/watch?v={Video_ID}
+    - Shortened: https://youtu.be/{Video_ID}
+    - Embedded: https://www.youtube.com/embed/{Video_ID}
+    - Shorts: https://www.youtube.com/shorts/{Video_ID}
+    - URL with params: https://www.youtube.com/watch?v={Video_ID}&t=90s
     - HTTP & alternate domains
     """
     # Strips surrounding whitespaces
@@ -62,46 +62,70 @@ def format_time(seconds: float) -> str:
     secs = int(seconds % 60)
     return f"{hrs:02d}:{mins:02d}:{secs:02d}" if hrs > 0 else f"{mins:02d}:{secs:02d}"
 
+# --- BLOCKING HELPER FUNCTIONS RUN CONCURRENTLY ---
+
+def fetch_youtube_metadata(url: str):
+    """
+    Uses yt-dlp to extract the video title and description.
+    """
+    ydl_opts = {
+        'quiet': True,
+        'skip_download': True,
+        'extract_flat': False,
+    }
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(url, download=False)
+        return {
+            "title": info.get("title", "Unknown Title"),
+            "description": info.get("description", "No description available.")
+        }
+
+def fetch_youtube_transcript(video_id: str):
+    """
+    Uses youtube-transcript-api with fallback mechanics.
+    """
+    yt_api = YouTubeTranscriptApi()
+    try:
+        raw_transcript = yt_api.fetch(video_id)
+    except NoTranscriptFound:
+        transcript_list = yt_api.list(video_id)
+        all_transcripts = list(transcript_list._manually_created_transcripts.values()) + \
+                          list(transcript_list._generated_transcripts.values())
+        
+        if not all_transcripts:
+            raise Exception("No transcripts available in any language for this video.")
+            
+        raw_transcript = all_transcripts[0].fetch()
+        
+    return [
+        {"timestamp": format_time(entry.start), "text": entry.text}
+        for entry in raw_transcript
+    ]
+
+# --- PARALLELIZED ENDPOINT ---
+
 @app.post("/transcript")
 async def get_transcript(request: VideoRequest):
     video_id = extract_video_id(request.url)
-    
     if not video_id:
         raise HTTPException(status_code=400, detail="Invalid YouTube URL format.")
     
     try:
-        yt_api = YouTubeTranscriptApi()
+        # Spin up both tasks concurrently in separate threads to avoid blocking FastAPI's event loop
+        metadata_task = asyncio.to_thread(fetch_youtube_metadata, request.url)
+        transcript_task = asyncio.to_thread(fetch_youtube_transcript, video_id)
         
-        try:
-            # 1. First attempt: Try fetching standard English transcript
-            raw_transcript = yt_api.fetch(video_id)
-        except NoTranscriptFound:
-            print(f"English transcript not found for {video_id}. Attempting language fallback...")
-            
-            # 2. Fallback: Retrieve the list of all available transcripts for this video
-            transcript_list = yt_api.list(video_id)
-            
-            # 3. Find the first available transcript regardless of the language code
-            # This loops through manually created or generated transcripts
-            all_transcripts = list(transcript_list._manually_created_transcripts.values()) + \
-                              list(transcript_list._generated_transcripts.values())
-            
-            if not all_transcripts:
-                raise Exception("No transcripts available in any language for this video.")
-                
-            # Pick the first transcript object available (e.g., Hindi auto-generated)
-            fallback_transcript_obj = all_transcripts[0]
-            raw_transcript = fallback_transcript_obj.fetch()
+        # Await both parallel tasks at the exact same time
+        metadata, transcript_data = await asyncio.gather(metadata_task, transcript_task)
         
-        # Format the output using dot notation
-        formatted_transcript = [
-            {"timestamp": format_time(entry.start), "text": entry.text}
-            for entry in raw_transcript
-        ]
-        return {"video_id": video_id, "transcript": formatted_transcript}
+        return {
+            "video_id": video_id,
+            "title": metadata["title"],
+            "description": metadata["description"],
+            "transcript": transcript_data
+        }
         
     except Exception as e:
-        import traceback
         print("\n--- DETAILED BACKEND ERROR ---")
         traceback.print_exc()
         print("------------------------------\n")
@@ -114,7 +138,7 @@ async def get_transcript(request: VideoRequest):
             
         raise HTTPException(
             status_code=500, 
-            detail=f"Failed to retrieve transcript: {str(e)}"
+            detail=f"Failed to process video: {str(e)}"
         )
 
 if __name__ == "__main__":
