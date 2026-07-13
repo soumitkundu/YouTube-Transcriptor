@@ -115,3 +115,36 @@ body {
 .text {
   color: #374151;
 }
+
+.meta-card {
+  background: #ffffff;
+  padding: 20px;
+  border-radius: 12px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  margin-bottom: 20px;
+}
+
+.video-title {
+  margin: 0 0 10px 0;
+  font-size: 1.4rem;
+  color: #111827;
+}
+
+.video-description summary {
+  color: #2563eb;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.video-description p {
+  white-space: pre-wrap;
+  /* Keeps linebreaks intact from YouTube descriptions */
+  font-size: 0.95rem;
+  color: #4b5563;
+  background: #f3f4f6;
+  padding: 12px;
+  border-radius: 6px;
+  margin-top: 8px;
+  max-height: 150px;
+  overflow-y: auto;
+}
